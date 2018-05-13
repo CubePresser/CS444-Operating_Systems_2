@@ -38,6 +38,7 @@ typedef struct Searcher_args {
 	Node** list;
 	Lightswitch* search_switch; 
 	sem_t* no_search;
+	sem_t* talk;
 }Searcher_args;
 
 typedef struct Inserter_args {
@@ -45,12 +46,14 @@ typedef struct Inserter_args {
 	Lightswitch* insert_switch;
 	sem_t* insert_mutex;
 	sem_t* no_insert;
+	sem_t* talk;
 }Inserter_args;
 
 typedef struct Deleter_args {
 	Node** list;
 	sem_t* no_search;
 	sem_t* no_insert;
+	sem_t* talk;
 }Deleter_args;
 
 int bit;
@@ -109,11 +112,12 @@ void driver()
 	Node* head = NULL;
 
 	Lightswitch search_switch, insert_switch;
-	sem_t *insert_mutex, *no_search, *no_insert;
+	sem_t *insert_mutex, *no_search, *no_insert, *talk;
 
 	insert_mutex = (sem_t*)malloc(sizeof(sem_t));
 	no_search = (sem_t*)malloc(sizeof(sem_t));
 	no_insert = (sem_t*)malloc(sizeof(sem_t));
+	talk = (sem_t*)malloc(sizeof(sem_t));
 
 	search_switch.counter = 0;
 	insert_switch.counter = 0;
@@ -127,14 +131,15 @@ void driver()
 	sem_init(no_insert, 0, 1);
 	sem_init(search_switch.mutex, 0, 1);
 	sem_init(insert_switch.mutex, 0, 1);
+	sem_init(talk, 0, 1);
 
 	//Initialize arguments
 	Searcher_args s_arg; 
 	Inserter_args i_arg; 
 	Deleter_args d_arg;
-	s_arg.list = &head; 
-	i_arg.list = &head; 
-	d_arg.list = &head;
+	s_arg.list = &head; s_arg.talk = talk; 
+	i_arg.list = &head; i_arg.talk = talk;
+	d_arg.list = &head; d_arg.talk = talk;
 	s_arg.search_switch = &search_switch;
 	s_arg.no_search = no_search;
 	i_arg.insert_switch = &insert_switch;
@@ -149,14 +154,12 @@ void driver()
 	int num_inserters = prng()%5 + 1;
 	int num_deleters = prng()%5 + 1;
 
-	//int num_searchers, num_inserters, num_deleters;
-	//num_searchers = num_inserters = num_deleters = 1;
+	printf("Searchers: %d\tInserters: %d\tDeleters: %d\nThread execution will begin in 5 seconds...\n", num_searchers, num_inserters, num_deleters);
+	sleep(5);
 
-	deleters = get_threads(num_deleters, deleter, &d_arg);
 	searchers = get_threads(num_searchers, searcher, &s_arg);
 	inserters = get_threads(num_inserters, inserter, &i_arg);
-
-	printf("S: %d\nI: %d\nD: %d\n", num_searchers, num_inserters, num_deleters);
+	deleters = get_threads(num_deleters, deleter, &d_arg);
 
 	pthread_join(searchers[0], NULL);
 	return;
@@ -176,10 +179,20 @@ void* searcher(void* args)
 {
 	//Get arguments from void*
 	Searcher_args* s_arg = (Searcher_args*)(args);
+	int id = pthread_self();
 	while(1)
 	{
+		sem_wait(s_arg->talk);
+		printf("[SEARCH-WAIT] Thread 0x%x is checking for active delete threads.\n", id);
+		sem_post(s_arg->talk);
 		ls_lock(s_arg->search_switch, s_arg->no_search);
+
+		sem_wait(s_arg->talk);
+		printf("[SEARCH-ACTION] Thread 0x%x is searching the list.\nList: ", id);
 		show_list(*(s_arg->list));
+		sem_post(s_arg->talk);
+		sleep(prng()%3+1);
+
 		ls_unlock(s_arg->search_switch, s_arg->no_search);
 		sleep(prng()%10+1);
 	}
@@ -189,13 +202,24 @@ void* searcher(void* args)
 void* inserter(void* args)
 {
 	Inserter_args* i_arg = (Inserter_args*)(args);
+	int val;
+	int id = pthread_self();
 	while(1)
 	{
+		val = prng()%101;
+		sem_wait(i_arg->talk);
+		printf("[INSERT-WAIT] Thread 0x%x is checking for active insert and delete threads.\n", id);
+		sem_post(i_arg->talk);
 		ls_lock(i_arg->insert_switch, i_arg->no_insert);
 		sem_wait(i_arg->insert_mutex);
 
-		insert(i_arg->list, prng()%101);
-		
+		insert(i_arg->list, val);
+		sem_wait(i_arg->talk);
+		printf("[INSERT-ACTION] Thread: 0x%x inserted %d into the list.\n", id, val);
+		sem_post(i_arg->talk);
+
+		sleep(prng()%3+1);
+
 		sem_post(i_arg->insert_mutex);
 		ls_unlock(i_arg->insert_switch, i_arg->no_insert);
 		sleep(prng()%10+1);
@@ -207,12 +231,20 @@ void* inserter(void* args)
 void* deleter(void* args)
 {
 	Deleter_args* d_arg = (Deleter_args*)(args);
+	int id = pthread_self();
 	while(1)
 	{
+		sem_wait(d_arg->talk);
+		printf("[DELETE-WAIT] Thread 0x%x is checking for active search, insert and delete threads.\n", id);
+		sem_post(d_arg->talk);
 		sem_wait(d_arg->no_search);
 		sem_wait(d_arg->no_insert);
 
 		delete_end(d_arg->list);
+		sem_wait(d_arg->talk);
+		printf("[DELETE-ACTION] Thread 0x%x deleted end of list.\n", id);
+		sem_post(d_arg->talk);
+		sleep(prng()%3+1);
 
 		sem_post(d_arg->no_insert);
 		sem_post(d_arg->no_search);
