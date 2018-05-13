@@ -9,21 +9,49 @@ typedef struct Node {
 	struct Node* next;
 }Node;
 
-typedef struct searcher_args {
-	Node* list;
-	sem_t* is_deleting;
-}searcher_args;
+//Constructed from equivalent python implementation in little book of semaphores page 70
+typedef struct Lightswitch { 
+	int counter;
+	sem_t* mutex;
+}Lightswitch;
 
-typedef struct inserter_args {
-	Node* list;
-	sem_t* is_deleting;
-	sem_t* is_inserting;
-}inserter_args;
+void ls_lock(Lightswitch* ls, sem_t* s)
+{
+	sem_wait(ls->mutex);
+	ls->counter += 1;
+	if(ls->counter == 1)
+		sem_wait(s);
+	sem_post(ls->mutex);
+}
 
-typedef struct deleter_args {
-	Node* list;
-	sem_t* is_deleting;
-}deleter_args;
+void ls_unlock(Lightswitch* ls, sem_t* s)
+{
+	sem_wait(ls->mutex);
+	ls->counter -= 1;
+	if(ls->counter == 0)
+		sem_post(s);
+	sem_post(ls->mutex);
+}
+//////////////////////////////////////////////////////////////////////////////////////
+
+typedef struct Searcher_args {
+	Node** list;
+	Lightswitch* search_switch; 
+	sem_t* no_search;
+}Searcher_args;
+
+typedef struct Inserter_args {
+	Node** list;
+	Lightswitch* insert_switch;
+	sem_t* insert_mutex;
+	sem_t* no_insert;
+}Inserter_args;
+
+typedef struct Deleter_args {
+	Node** list;
+	sem_t* no_search;
+	sem_t* no_insert;
+}Deleter_args;
 
 int bit;
 
@@ -32,6 +60,7 @@ void driver();
 void show_list(Node*); //Searcher function
 void insert(Node**, int); //Inserter function
 void delete(Node**, int); //Deleter function
+void delete_end(Node**);
 void free_list(Node*);
 
 void* searcher(void*);
@@ -78,24 +107,58 @@ void driver()
 {
 	//Initialize constructs for problem
 	Node* head = NULL;
-	sem_t* is_deleting, *is_inserting;
-	is_deleting = (sem_t*)malloc(sizeof(sem_t));
-	is_inserting = (sem_t*)malloc(sizeof(sem_t));
 
-	pthread_t* searchers, *inserters, *deleters;
+	Lightswitch search_switch, insert_switch;
+	sem_t *insert_mutex, *no_search, *no_insert;
+
+	insert_mutex = (sem_t*)malloc(sizeof(sem_t));
+	no_search = (sem_t*)malloc(sizeof(sem_t));
+	no_insert = (sem_t*)malloc(sizeof(sem_t));
+
+	search_switch.counter = 0;
+	insert_switch.counter = 0;
+
+	search_switch.mutex = (sem_t*)malloc(sizeof(sem_t));
+	insert_switch.mutex = (sem_t*)malloc(sizeof(sem_t));
+
+	//Initialize semaphores
+	sem_init(insert_mutex, 0, 1);
+	sem_init(no_search, 0, 1);
+	sem_init(no_insert, 0, 1);
+	sem_init(search_switch.mutex, 0, 1);
+	sem_init(insert_switch.mutex, 0, 1);
+
+	//Initialize arguments
+	Searcher_args s_arg; 
+	Inserter_args i_arg; 
+	Deleter_args d_arg;
+	s_arg.list = &head; 
+	i_arg.list = &head; 
+	d_arg.list = &head;
+	s_arg.search_switch = &search_switch;
+	s_arg.no_search = no_search;
+	i_arg.insert_switch = &insert_switch;
+	i_arg.insert_mutex = insert_mutex;
+	i_arg.no_insert = no_insert;
+	d_arg.no_search = no_search;
+	d_arg.no_insert = no_insert;
+
+	pthread_t *searchers, *inserters, *deleters;
 
 	int num_searchers = prng()%5 + 1;
 	int num_inserters = prng()%5 + 1;
 	int num_deleters = prng()%5 + 1;
 
-	searchers = get_threads(num_searchers, searcher, NULL);
-	inserters = get_threads(num_inserters, inserter, NULL);
-	deleters = get_threads(num_deleters, deleter, NULL);
+	//int num_searchers, num_inserters, num_deleters;
+	//num_searchers = num_inserters = num_deleters = 1;
 
-	//printf("S: %d\nI: %d\nD: %d\n", num_searchers, num_inserters, num_deleters);
+	deleters = get_threads(num_deleters, deleter, &d_arg);
+	searchers = get_threads(num_searchers, searcher, &s_arg);
+	inserters = get_threads(num_inserters, inserter, &i_arg);
+
+	printf("S: %d\nI: %d\nD: %d\n", num_searchers, num_inserters, num_deleters);
 
 	pthread_join(searchers[0], NULL);
-
 	return;
 }
 
@@ -111,16 +174,50 @@ pthread_t* get_threads(int num_threads, void* function, void* args)
 
 void* searcher(void* args)
 {
+	//Get arguments from void*
+	Searcher_args* s_arg = (Searcher_args*)(args);
+	while(1)
+	{
+		ls_lock(s_arg->search_switch, s_arg->no_search);
+		show_list(*(s_arg->list));
+		ls_unlock(s_arg->search_switch, s_arg->no_search);
+		sleep(prng()%10+1);
+	}
 	return;
 }
 
 void* inserter(void* args)
 {
+	Inserter_args* i_arg = (Inserter_args*)(args);
+	while(1)
+	{
+		ls_lock(i_arg->insert_switch, i_arg->no_insert);
+		sem_wait(i_arg->insert_mutex);
+
+		insert(i_arg->list, prng()%101);
+		
+		sem_post(i_arg->insert_mutex);
+		ls_unlock(i_arg->insert_switch, i_arg->no_insert);
+		sleep(prng()%10+1);
+
+	}
 	return;
 }
 
 void* deleter(void* args)
 {
+	Deleter_args* d_arg = (Deleter_args*)(args);
+	while(1)
+	{
+		sem_wait(d_arg->no_search);
+		sem_wait(d_arg->no_insert);
+
+		delete_end(d_arg->list);
+
+		sem_post(d_arg->no_insert);
+		sem_post(d_arg->no_search);
+		sleep(prng()%10+1);
+	}
 	return;
 }
 
@@ -128,9 +225,11 @@ void show_list(Node* node)
 {
 	if(node != NULL)
 	{
-		printf("%d\n", node->value);
+		printf("%d, ", node->value);
 		show_list(node->next);
+		return;
 	}
+	printf("\n");
 }
 
 void insert(Node** node, int value)
@@ -157,16 +256,40 @@ void delete(Node** node, int value)
 			Node* temp = (*node)->next; //Temporarily store the location of the node we're removing
 			(*node)->next = temp->next; //Direct current node to whatever follows the deleted node
 			free(temp); //Free the memory that temp points to
+			return;
 		}
 	}
 	else if((*node)->value == value) //If current node we're at is the head
 	{
 		//Set the new head and free the current head
-		Node* temp = *node;
+		Node* temp = (*node)->next;
 		*node = (*node)->next;
 		free(temp);
+		return;
 	}
 	delete(&(*node)->next, value);
+}
+
+void delete_end(Node** node)
+{
+	if(*node == NULL) //Empty list
+		return;
+
+	if((*node)->next != NULL) //Is the next item null?
+	{
+		if((*node)->next->next == NULL) //Next item is the tail
+		{
+			free((*node)->next);
+			(*node)->next = NULL;
+			return;
+		}
+	}
+	else { //We're the head of the list
+		free(*node);
+		*node = NULL;
+		return;
+	}
+	delete_end(&(*node)->next);
 }
 
 void free_list(Node* node)
