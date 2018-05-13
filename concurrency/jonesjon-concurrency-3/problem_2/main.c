@@ -9,6 +9,22 @@ typedef struct Node {
 	struct Node* next;
 }Node;
 
+typedef struct searcher_args {
+	Node* list;
+	sem_t* is_deleting;
+}searcher_args;
+
+typedef struct inserter_args {
+	Node* list;
+	sem_t* is_deleting;
+	sem_t* is_inserting;
+}inserter_args;
+
+typedef struct deleter_args {
+	Node* list;
+	sem_t* is_deleting;
+}deleter_args;
+
 int bit;
 
 unsigned int prng();
@@ -17,6 +33,12 @@ void show_list(Node*); //Searcher function
 void insert(Node**, int); //Inserter function
 void delete(Node**, int); //Deleter function
 void free_list(Node*);
+
+void* searcher(void*);
+void* inserter(void*);
+void* deleter(void*);
+
+pthread_t* get_threads(int, void*, void*);
 
 int main()
 {
@@ -54,15 +76,51 @@ int main()
 
 void driver()
 {
-	//Runs main program code
+	//Initialize constructs for problem
 	Node* head = NULL;
-	delete(&head, 10);
-	insert(&head, 1);
-	insert(&head, 2);
-	insert(&head, 3);
-	delete(&head, 3);
-	show_list(head);
-	free_list(head);
+	sem_t* is_deleting, *is_inserting;
+	is_deleting = (sem_t*)malloc(sizeof(sem_t));
+	is_inserting = (sem_t*)malloc(sizeof(sem_t));
+
+	pthread_t* searchers, *inserters, *deleters;
+
+	int num_searchers = prng()%5 + 1;
+	int num_inserters = prng()%5 + 1;
+	int num_deleters = prng()%5 + 1;
+
+	searchers = get_threads(num_searchers, searcher, NULL);
+	inserters = get_threads(num_inserters, inserter, NULL);
+	deleters = get_threads(num_deleters, deleter, NULL);
+
+	//printf("S: %d\nI: %d\nD: %d\n", num_searchers, num_inserters, num_deleters);
+
+	pthread_join(searchers[0], NULL);
+
+	return;
+}
+
+pthread_t* get_threads(int num_threads, void* function, void* args)
+{
+	pthread_t* threads = (pthread_t*)malloc(sizeof(pthread_t)*num_threads);
+	int i; for(i = 0; i < num_threads; i++)
+	{
+		pthread_create(&(threads[i]), NULL, function, args);
+	}
+	return threads;
+}
+
+void* searcher(void* args)
+{
+	return;
+}
+
+void* inserter(void* args)
+{
+	return;
+}
+
+void* deleter(void* args)
+{
 	return;
 }
 
