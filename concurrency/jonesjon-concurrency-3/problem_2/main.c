@@ -73,7 +73,7 @@ void show_list(Node*); //Searcher function
 void insert(Node**, int); //Inserter function
 void delete(Node**, int); //Deleter function
 void delete_end(Node**);
-void free_list(Node*);
+void free_list(Node**);
 
 void* searcher(void*);
 void* inserter(void*);
@@ -305,11 +305,14 @@ void* deleter(void* args)
 	return;
 }
 
-//////////
-//Ran out of time to comment below stuff. Was doing other things. Nice code though :)
-//////////
-
-//Print out linked list
+/*************************************************
+ * Function: show_list
+ * Description: Prints out the contents of a linked list. Used by the searcher thread to simulate searching (Reads).
+ * Params: Linked list node pointer (First call should be the head if you want to print out entire list)
+ * Returns: None
+ * Pre-conditions: None 
+ * Post-conditions: Linked list is printed out or if list is empty a newline is printed
+ * **********************************************/
 void show_list(Node* node)
 {
 	if(node != NULL)
@@ -321,7 +324,15 @@ void show_list(Node* node)
 	printf("\n");
 }
 
-//Insert node onto end of linked list
+/*************************************************
+ * Function: insert
+ * Description: Inserts a node onto the end of a singly linked list. Creates a head if the list is empty.
+ * Params: Pointer to Linked List node pointer (This is so that if the list is empty, a head can be created)
+ *		   Integer value to be inserted as new node.
+ * Returns: None
+ * Pre-conditions: None 
+ * Post-conditions: New node is allocated memory and added to the linked list
+ * **********************************************/
 void insert(Node** node, int value)
 {
 	if(*node == NULL)
@@ -334,7 +345,16 @@ void insert(Node** node, int value)
 	insert(&(*node)->next, value);
 }
 
-//Delete a particular value from the list
+/*************************************************
+ * Function: delete
+ * Description: Deletes the node in the linked list corresponding to the value passed in. Deallocates node deleted.
+ * Params: Pointer to Linked List node pointer (This is needed if the head will be deleted)
+ *         Integer value corresponding to the node you want deleted from the list.
+ * Returns: None
+ * Pre-conditions: None 
+ * Post-conditions: Node corresponding to value has been removed and deallocated or no change if value is not present in list.
+ *                  If head node is deleted, new head is updated or given NULL value.
+ * **********************************************/
 void delete(Node** node, int value)
 {
 	if(*node == NULL) //If list is empty or end of list reached
@@ -361,7 +381,14 @@ void delete(Node** node, int value)
 	delete(&(*node)->next, value);
 }
 
-//Delete the end of the list
+/*************************************************
+ * Function: delete_end
+ * Description: Deletes a node from the end of the linked list. Deallocates node deleted.
+ * Params: Pointer to Linked List node pointer (This is needed if the head will be deleted)
+ * Returns: None
+ * Pre-conditions: None
+ * Post-conditions: End of the linked list is deleted and deallocated.
+ * **********************************************/
 void delete_end(Node** node)
 {
 	if(*node == NULL) //Empty list
@@ -384,13 +411,21 @@ void delete_end(Node** node)
 	delete_end(&(*node)->next);
 }
 
-//Free the list memory, too bad there isn't a chance to use this :(
-void free_list(Node* node)
+/*************************************************
+ * Function: free_list
+ * Description: Deallocates all list items
+ * Params: Pointer to Linked List node pointer (So we can set the values of the node pointers to NULL)
+ * Returns: None
+ * Pre-conditions: None 
+ * Post-conditions: All nodes deallocated and set to NULL
+ * **********************************************/
+void free_list(Node** node)
 {
-	if(node == NULL)
+	if((*node) == NULL)
 		return;
-	free_list(node->next);
-	free(node);
+	free_list((*node)->next);
+	free(*node);
+	*node = NULL;
 }
 
 /*************************************************
