@@ -1,3 +1,9 @@
+////////////////////////////////////////////////////////
+// Jonathan Jones - jonesjon 932709446
+// Concurrency 3
+// CS444 Spring2018
+////////////////////////////////////////////////////////
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <pthread.h>
@@ -32,8 +38,8 @@ void ls_unlock(Lightswitch* ls, sem_t* s)
 		sem_post(s);
 	sem_post(ls->mutex);
 }
-//////////////////////////////////////////////////////////////////////////////////////
 
+//Arguments for the search thread
 typedef struct Searcher_args {
 	Node** list;
 	Lightswitch* search_switch; 
@@ -41,6 +47,7 @@ typedef struct Searcher_args {
 	sem_t* talk;
 }Searcher_args;
 
+//Arguments for the insertion threads
 typedef struct Inserter_args {
 	Node** list;
 	Lightswitch* insert_switch;
@@ -49,6 +56,7 @@ typedef struct Inserter_args {
 	sem_t* talk;
 }Inserter_args;
 
+//Arguments for the deleter threads
 typedef struct Deleter_args {
 	Node** list;
 	sem_t* no_search;
@@ -58,6 +66,7 @@ typedef struct Deleter_args {
 
 int bit;
 
+//Function prototypes
 unsigned int prng();
 void driver();
 void show_list(Node*); //Searcher function
@@ -106,6 +115,14 @@ int main()
     return 0;
 }
 
+/*************************************************
+ * Function: Runs the main program code
+ * Description: Sets up the semaphores and the threads for execution
+ * Params: none
+ * Returns: none
+ * Pre-conditions: bit is set so prng knows what random number generator to use 
+ * Post-conditions: none
+ * **********************************************/
 void driver()
 {
 	//Initialize constructs for problem
@@ -148,8 +165,10 @@ void driver()
 	d_arg.no_search = no_search;
 	d_arg.no_insert = no_insert;
 
+	//Initialize threads
 	pthread_t *searchers, *inserters, *deleters;
 
+	//Get between 1 and 5 of each thread type
 	int num_searchers = prng()%5 + 1;
 	int num_inserters = prng()%5 + 1;
 	int num_deleters = prng()%5 + 1;
@@ -161,10 +180,18 @@ void driver()
 	inserters = get_threads(num_inserters, inserter, &i_arg);
 	deleters = get_threads(num_deleters, deleter, &d_arg);
 
-	pthread_join(searchers[0], NULL);
+	pthread_join(searchers[0], NULL); //Have the parent thread wait forever
 	return;
 }
 
+/*************************************************
+ * Function: get_threads
+ * Description: Creates and returns a certain number of threads given the function and arguments to use
+ * Params: number of threads (greater than 0), void* function for the thread to use, arguments to that function in a structure
+ * Returns: List of pthreads.
+ * Pre-conditions: Valid arguments passed in, non-negative num_threads
+ * Post-conditions: Threads are initialized properly and executing.
+ * **********************************************/
 pthread_t* get_threads(int num_threads, void* function, void* args)
 {
 	pthread_t* threads = (pthread_t*)malloc(sizeof(pthread_t)*num_threads);
@@ -175,30 +202,47 @@ pthread_t* get_threads(int num_threads, void* function, void* args)
 	return threads;
 }
 
+/*************************************************
+ * Function: searcher
+ * Description: Thread function for searcher threads. It will print each item from the linked list (Basically a search of the whole list) when there are no deleters in use
+ * Params: Searcher_args pointer structure.
+ * Returns: None
+ * Pre-conditions: Arguments structure is properly filled out
+ * Post-conditions: None
+ * **********************************************/
 void* searcher(void* args)
 {
-	//Get arguments from void*
-	Searcher_args* s_arg = (Searcher_args*)(args);
-	int id = pthread_self();
+	Searcher_args* s_arg = (Searcher_args*)(args); //Get arguments into proper structure for usage
+	int id = pthread_self(); //Get id for informative prints
 	while(1)
 	{
+		//Enforce semaphore for STDOUT usage
 		sem_wait(s_arg->talk);
 		printf("[SEARCH-WAIT] Thread 0x%x is checking for active delete threads.\n", id);
 		sem_post(s_arg->talk);
-		ls_lock(s_arg->search_switch, s_arg->no_search);
+		ls_lock(s_arg->search_switch, s_arg->no_search); //Flip the lightswitch for searchers if first thread
 
 		sem_wait(s_arg->talk);
 		printf("[SEARCH-ACTION] Thread 0x%x is searching the list.\nList: ", id);
-		show_list(*(s_arg->list));
+		show_list(*(s_arg->list)); //Search through the linked list
 		sem_post(s_arg->talk);
+
 		sleep(prng()%3+1);
 
-		ls_unlock(s_arg->search_switch, s_arg->no_search);
-		sleep(prng()%10+1);
+		ls_unlock(s_arg->search_switch, s_arg->no_search); //Flip the lightswitch for searchers if last thread
+		sleep(prng()%10+1); //Sleep for awhile before next attempt to search
 	}
 	return;
 }
 
+/*************************************************
+ * Function: inserter
+ * Description: Thread function for inserter threads. It will insert an item onto the end of the linked list when there are no other inserters or deleters in use
+ * Params: Inserter_args pointer structure
+ * Returns: None
+ * Pre-conditions: Arguments structure is properly filled out
+ * Post-conditions: 
+ * **********************************************/
 void* inserter(void* args)
 {
 	Inserter_args* i_arg = (Inserter_args*)(args);
@@ -206,28 +250,36 @@ void* inserter(void* args)
 	int id = pthread_self();
 	while(1)
 	{
-		val = prng()%101;
+		val = prng()%101; //Random value to add to the list
 		sem_wait(i_arg->talk);
 		printf("[INSERT-WAIT] Thread 0x%x is checking for active insert and delete threads.\n", id);
 		sem_post(i_arg->talk);
-		ls_lock(i_arg->insert_switch, i_arg->no_insert);
+		ls_lock(i_arg->insert_switch, i_arg->no_insert); //Flip the lightswitch for inserters if first thread
 		sem_wait(i_arg->insert_mutex);
 
-		insert(i_arg->list, val);
+		insert(i_arg->list, val); //Insert into the list
 		sem_wait(i_arg->talk);
 		printf("[INSERT-ACTION] Thread: 0x%x inserted %d into the list.\n", id, val);
 		sem_post(i_arg->talk);
 
-		sleep(prng()%3+1);
+		sleep(prng()%3+1); //Sleep between 1 and 3 seconds for insertion time
 
 		sem_post(i_arg->insert_mutex);
-		ls_unlock(i_arg->insert_switch, i_arg->no_insert);
-		sleep(prng()%10+1);
+		ls_unlock(i_arg->insert_switch, i_arg->no_insert); //Flip the lightswitch for inserters if last thread
+		sleep(prng()%10+1); //Sleep for awhile before next attempt to insert
 
 	}
 	return;
 }
 
+/*************************************************
+ * Function: deleter
+ * Description: Thread function for deleter threads. Deletes an item from the end of the list if there are no searchers, deleters or inserter threads currently active (or queued to wait before)
+ * Params: Deleter_args pointer structure
+ * Returns: None
+ * Pre-conditions: Arguments is properly filled out
+ * Post-conditions: None
+ * **********************************************/
 void* deleter(void* args)
 {
 	Deleter_args* d_arg = (Deleter_args*)(args);
@@ -237,22 +289,27 @@ void* deleter(void* args)
 		sem_wait(d_arg->talk);
 		printf("[DELETE-WAIT] Thread 0x%x is checking for active search, insert and delete threads.\n", id);
 		sem_post(d_arg->talk);
-		sem_wait(d_arg->no_search);
-		sem_wait(d_arg->no_insert);
+		sem_wait(d_arg->no_search); //Any searchers?
+		sem_wait(d_arg->no_insert); //Any deleters?
 
-		delete_end(d_arg->list);
+		delete_end(d_arg->list); //Delete item from end of the list
 		sem_wait(d_arg->talk);
 		printf("[DELETE-ACTION] Thread 0x%x deleted end of list.\n", id);
 		sem_post(d_arg->talk);
-		sleep(prng()%3+1);
+		sleep(prng()%3+1); //Sleep between 1 and 3 seconds during deletion
 
 		sem_post(d_arg->no_insert);
 		sem_post(d_arg->no_search);
-		sleep(prng()%10+1);
+		sleep(prng()%10+1); //Sleep between 1 and 10 seconds before trying to delete again
 	}
 	return;
 }
 
+//////////
+//Ran out of time to comment below stuff. Was doing other things. Nice code though :)
+//////////
+
+//Print out linked list
 void show_list(Node* node)
 {
 	if(node != NULL)
@@ -264,6 +321,7 @@ void show_list(Node* node)
 	printf("\n");
 }
 
+//Insert node onto end of linked list
 void insert(Node** node, int value)
 {
 	if(*node == NULL)
@@ -276,6 +334,7 @@ void insert(Node** node, int value)
 	insert(&(*node)->next, value);
 }
 
+//Delete a particular value from the list
 void delete(Node** node, int value)
 {
 	if(*node == NULL) //If list is empty or end of list reached
@@ -302,6 +361,7 @@ void delete(Node** node, int value)
 	delete(&(*node)->next, value);
 }
 
+//Delete the end of the list
 void delete_end(Node** node)
 {
 	if(*node == NULL) //Empty list
@@ -324,6 +384,7 @@ void delete_end(Node** node)
 	delete_end(&(*node)->next);
 }
 
+//Free the list memory, too bad there isn't a chance to use this :(
 void free_list(Node* node)
 {
 	if(node == NULL)
