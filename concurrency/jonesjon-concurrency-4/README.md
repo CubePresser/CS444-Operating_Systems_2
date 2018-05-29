@@ -6,11 +6,11 @@ A barbershop consists of a waiting room with n chairs, and the barber room conta
 
 Some useful constraints:
 
-    * Customers invoke get_hair_cut when sitting in the barber chair.
-    * If the shop is full, a customer exits the shop.
-    * The barber thread invokes cut_hair.
-    * cut_hair and get_hair_cut should always be executing concurrently, for the same duration.
-    * Your solution should be valid for any number of chairs.
+* Customers invoke get_hair_cut when sitting in the barber chair.
+* If the shop is full, a customer exits the shop.
+* The barber thread invokes cut_hair.
+* cut_hair and get_hair_cut should always be executing concurrently, for the same duration.
+* Your solution should be valid for any number of chairs.
 
 Write concurrent code for customers and barbers that implements a solution to the above constraints.
 
