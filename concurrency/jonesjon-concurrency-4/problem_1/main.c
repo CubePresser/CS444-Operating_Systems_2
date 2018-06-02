@@ -1,3 +1,8 @@
+////////////////////////////////////////////////////////
+// Jonathan Jones - jonesjon 932709446
+// Concurrency 4
+// CS444 Spring2018
+////////////////////////////////////////////////////////
 //Barbershop problem found on page 129 of the little book of semaphores
 
 #include <stdlib.h>
